@@ -1,0 +1,7 @@
+task: {任务名}
+from: {上游协同单路径，没有写 无}
+status: {未开始／进行中／待本人确认／已生效／已交回／已完成／阻塞}
+blocked_by: {无，或阻塞原因}
+outputs:
+  - {产出文件相对路径}
+updated: {YYYY-MM-DD}

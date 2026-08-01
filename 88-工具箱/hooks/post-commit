@@ -1,0 +1,27 @@
+#!/bin/sh
+# 个人仓的 post-commit：本次提交若动了任何 任务状态.yaml，就调 sync_desk.py 把本人工作台从全部任务包
+# 重新生成，由 sync_desk 以本人身份提交并推送公共区（推送后公共区远端 post-receive 再重建看板）。
+# 装法：init_member.py 建仓时自动拷到 个人区/{代号}仓/.git/hooks/post-commit 并加可执行位。
+# 布局：个人仓在 个人区/{代号}仓，公共区在 项目根/公共区（即个人仓的 ../../公共区）。
+
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+[ -n "$SKIP_DESK_SYNC" ] && exit 0
+
+REPO=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$REPO" || exit 0
+
+# 中文路径必须关掉 quotepath，否则 git 把路径转义后 grep 匹配不到
+if ! git -c core.quotepath=false diff-tree --root --no-commit-id --name-only -r HEAD | grep -q '任务状态\.yaml$'; then
+  exit 0
+fi
+
+PUB="$REPO/../../公共区"
+[ -d "$PUB/88-工具箱/脚本" ] || { echo "post-commit：旁边找不到公共区，请手动跑 sync_desk.py"; exit 0; }
+
+NAME=$(basename "$REPO")
+CODE=${NAME%仓}
+DATE=$(git log -1 --format=%ad --date=format:%Y-%m-%d)
+TIME=$(git log -1 --format=%ad --date=format:%H:%M)
+
+PYTHONIOENCODING=utf-8 python "$PUB/88-工具箱/脚本/sync_desk.py" --代号 "$CODE" --个人仓 "$REPO" --日期 "$DATE" --时刻 "$TIME"
+exit 0

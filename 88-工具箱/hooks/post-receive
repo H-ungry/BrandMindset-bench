@@ -1,0 +1,43 @@
+#!/bin/sh
+# 公共区远端的 post-receive：有人推送就更新协同系统工作副本，依次跑通知台账、看板、索引、巡检，
+# 有改动就以「协同系统」身份提交并回推。要防环：本次推送的最后一个提交是协同系统自己推的就跳过。
+# 装法：init_server.py 拷到 机房/公共区.git/hooks/post-receive 并加可执行位。
+# 布局：机房/公共区.git 是本远端；机房/协同系统/公共区 是「协同系统」身份的工作副本。
+
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_QUARANTINE_PATH
+
+BARE=$(cd "$(dirname "$0")/.." && pwd)
+ROOM="$BARE/../协同系统/公共区"
+
+[ -d "$ROOM" ] || exit 0
+
+# 防环
+LAST=$(git --git-dir="$BARE" log -1 --format=%cn refs/heads/main 2>/dev/null)
+if [ "$LAST" = "协同系统" ]; then
+  exit 0
+fi
+
+cd "$ROOM" || exit 0
+git fetch -q origin main
+git reset -q --hard origin/main
+
+STAMP=$(git log -1 --format=%aI)
+
+python "$ROOM/88-工具箱/脚本/build_notify.py"
+python "$ROOM/88-工具箱/脚本/build_board.py"
+python "$ROOM/88-工具箱/脚本/build_index.py"
+python "$ROOM/88-工具箱/脚本/lint_workspace.py" || echo "巡检报出违规，见上方清单"
+
+if [ -n "$(git status --porcelain)" ]; then
+  export GIT_AUTHOR_NAME=协同系统
+  export GIT_AUTHOR_EMAIL=collab-bot@brand.local
+  export GIT_COMMITTER_NAME=协同系统
+  export GIT_COMMITTER_EMAIL=collab-bot@brand.local
+  export GIT_AUTHOR_DATE="$STAMP"
+  export GIT_COMMITTER_DATE="$STAMP"
+  git add -A
+  git commit -q -m "通知台账追加，看板与索引重建"
+  git push -q origin HEAD:main
+  echo "协同系统已回写通知台账与看板索引"
+fi
+exit 0
