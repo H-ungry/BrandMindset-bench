@@ -15,7 +15,7 @@ from 共用 import 公共区根, 项目根, 报错退出
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--来源", required=True, help="相对仓库根的生效件路径")
+    ap.add_argument("--来源", required=True, help="相对项目根的生效件路径")
     ap.add_argument("--归集名", default="")
     ap.add_argument("--日期", default=datetime.date.today().strftime("%Y%m%d"))
     a = ap.parse_args()
