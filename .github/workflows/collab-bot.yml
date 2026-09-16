@@ -1,0 +1,61 @@
+# 公共仓 GitHub Actions：复刻机房 post-receive 的协同系统自动化。
+# 有人推送 → 重建通知台账、看板、索引 → 巡检 → 有改动以「协同系统」身份回写。
+# 防环（双保险）：最后一个提交是协同系统自己则跳过；且回写提交信息带 [skip ci]。
+# 机房原版见 机房/公共区.git/hooks/post-receive.disabled，逻辑一一对应。
+
+name: collab-bot
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 防环检查
+        id: guard
+        run: |
+          LAST=$(git log -1 --format=%cn)
+          echo "last_committer=$LAST"
+          if [ "$LAST" = "协同系统" ]; then
+            echo "上一条是协同系统自己的回写，防环退出"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 重建通知台账、看板、索引
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          python "88-工具箱/脚本/build_notify.py"
+          python "88-工具箱/脚本/build_board.py"
+          python "88-工具箱/脚本/build_index.py"
+
+      - name: 巡检（报违规不阻断）
+        if: steps.guard.outputs.skip != 'true'
+        run: python "88-工具箱/脚本/lint_workspace.py" || echo "::warning::巡检报出违规，见上方清单"
+
+      - name: 有改动则以协同系统身份回写
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "无改动，不必回写"
+            exit 0
+          fi
+          STAMP=$(git log -1 --format=%aI)
+          git config user.name "协同系统"
+          git config user.email "collab-bot@brand.local"
+          git add -A
+          GIT_AUTHOR_DATE="$STAMP" GIT_COMMITTER_DATE="$STAMP" \
+            git commit -m "通知台账追加，看板与索引重建 [skip ci]"
+          git push
